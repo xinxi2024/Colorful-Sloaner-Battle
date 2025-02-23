@@ -29,25 +29,21 @@ function getLocalIP() {
 const app = express();
 const port = process.env.PORT || 10000;
 
-// 添加CORS支持
-app.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
-    next();
-});
-
-// 提供静态文件服务
-app.use(express.static(path.join(__dirname, '..')));
-
-// 设置根路由
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, '..', 'index.html'));
+// 创建HTTP服务器
+const server = app.listen(port, '0.0.0.0', () => {
+    console.log(`服务器已启动:`);
+    console.log(`- 本地访问: http://localhost:${port}`);
+    if (process.env.RENDER) {
+        console.log('- Render部署模式');
+    } else {
+        const localIP = getLocalIP();
+        console.log(`- 局域网访问: http://${localIP}:${port}`);
+    }
 });
 
 // 创建WebSocket服务器
 const wss = new WebSocket.Server({ 
-    noServer: true,
-    // 添加WebSocket配置
+    server,  // 直接使用HTTP服务器
     clientTracking: true,
     perMessageDeflate: {
         zlibDeflateOptions: {
@@ -66,6 +62,24 @@ const wss = new WebSocket.Server({
     }
 });
 
+// 添加CORS支持
+app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+    next();
+});
+
+// 忽略favicon请求
+app.get('/favicon.ico', (req, res) => res.status(204));
+
+// 提供静态文件服务
+app.use(express.static(path.join(__dirname, '..')));
+
+// 设置根路由
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, '..', 'index.html'));
+});
+
 // 存储房间信息
 const rooms = new Map();
 // 存储客户端连接
@@ -80,35 +94,51 @@ function generateRoomNumber() {
     return roomNumber;
 }
 
-// 处理WebSocket连接
+// WebSocket连接处理
 wss.on('connection', (ws) => {
+    console.log('New client connected');
     const clientId = uuidv4();
     clients.set(ws, { id: clientId });
 
     // 处理消息
     ws.on('message', (message) => {
-        const data = JSON.parse(message);
-        
-        switch (data.type) {
-            case 'create_room':
-                handleCreateRoom(ws);
-                break;
-            case 'join_room':
-                handleJoinRoom(ws, data);
-                break;
-            case 'game_action':
-                handleGameAction(ws, data);
-                break;
-            case 'leave_room':
-                handleLeaveRoom(ws);
-                break;
+        try {
+            const data = JSON.parse(message);
+            console.log('Received:', data);
+            
+            switch (data.type) {
+                case 'create_room':
+                    handleCreateRoom(ws);
+                    break;
+                case 'join_room':
+                    handleJoinRoom(ws, data);
+                    break;
+                case 'game_action':
+                    handleGameAction(ws, data);
+                    break;
+                case 'leave_room':
+                    handleLeaveRoom(ws);
+                    break;
+            }
+        } catch (error) {
+            console.error('Error handling message:', error);
+            ws.send(JSON.stringify({
+                type: 'error',
+                message: '服务器错误，请重试'
+            }));
         }
     });
 
     // 处理断开连接
     ws.on('close', () => {
+        console.log('Client disconnected');
         handleLeaveRoom(ws);
         clients.delete(ws);
+    });
+
+    // 处理错误
+    ws.on('error', (error) => {
+        console.error('WebSocket error:', error);
     });
 });
 
@@ -219,18 +249,6 @@ function handleLeaveRoom(ws) {
         }
     }
 }
-
-// 启动服务器
-const server = app.listen(port, '0.0.0.0', () => {
-    console.log(`服务器已启动:`);
-    console.log(`- 本地访问: http://localhost:${port}`);
-    if (process.env.RENDER) {
-        console.log('- Render部署模式');
-    } else {
-        const localIP = getLocalIP();
-        console.log(`- 局域网访问: http://${localIP}:${port}`);
-    }
-});
 
 // 处理WebSocket升级
 server.on('upgrade', (request, socket, head) => {
