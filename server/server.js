@@ -45,7 +45,26 @@ app.get('/', (req, res) => {
 });
 
 // 创建WebSocket服务器
-const wss = new WebSocket.Server({ noServer: true });
+const wss = new WebSocket.Server({ 
+    noServer: true,
+    // 添加WebSocket配置
+    clientTracking: true,
+    perMessageDeflate: {
+        zlibDeflateOptions: {
+            chunkSize: 1024,
+            memLevel: 7,
+            level: 3
+        },
+        zlibInflateOptions: {
+            chunkSize: 10 * 1024
+        },
+        clientNoContextTakeover: true,
+        serverNoContextTakeover: true,
+        serverMaxWindowBits: 10,
+        concurrencyLimit: 10,
+        threshold: 1024
+    }
+});
 
 // 存储房间信息
 const rooms = new Map();
@@ -203,15 +222,42 @@ function handleLeaveRoom(ws) {
 
 // 启动服务器
 const server = app.listen(port, '0.0.0.0', () => {
-    const localIP = getLocalIP();
     console.log(`服务器已启动:`);
     console.log(`- 本地访问: http://localhost:${port}`);
-    console.log(`- 局域网访问: http://${localIP}:${port}`);
+    if (process.env.RENDER) {
+        console.log('- Render部署模式');
+    } else {
+        const localIP = getLocalIP();
+        console.log(`- 局域网访问: http://${localIP}:${port}`);
+    }
 });
 
 // 处理WebSocket升级
 server.on('upgrade', (request, socket, head) => {
+    // 添加错误处理
+    socket.on('error', (err) => {
+        console.error('Socket error:', err);
+    });
+
     wss.handleUpgrade(request, socket, head, (ws) => {
+        // 添加心跳检测
+        ws.isAlive = true;
+        ws.on('pong', () => {
+            ws.isAlive = true;
+        });
+        
         wss.emit('connection', ws, request);
     });
 });
+
+// 添加WebSocket服务器心跳检测
+const interval = setInterval(() => {
+    wss.clients.forEach((ws) => {
+        if (ws.isAlive === false) {
+            clients.delete(ws);
+            return ws.terminate();
+        }
+        ws.isAlive = false;
+        ws.ping(() => {});
+    });
+}, 30000);

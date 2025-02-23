@@ -148,28 +148,29 @@ class BattleMode {
     }
 
     initializeWebSocket() {
-        // 获取当前页面的主机名和端口
+        // 获取当前页面的主机名
         const host = window.location.hostname;
         const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        this.ws = new WebSocket(`${wsProtocol}//${host}:3000`);
+        // 使用相对路径，让服务器处理端口
+        this.ws = new WebSocket(`${wsProtocol}//${host}`);
 
         this.ws.onopen = () => {
             console.log('Connected to battle server');
         };
 
-        this.ws.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            this.handleServerMessage(data);
-        };
-
         this.ws.onclose = () => {
             console.log('Disconnected from battle server');
-            alert('与服务器的连接已断开，请刷新页面重试');
+            // 可选：添加重连逻辑
+            setTimeout(() => this.initializeWebSocket(), 3000);
         };
 
         this.ws.onerror = (error) => {
             console.error('WebSocket error:', error);
-            alert('连接服务器失败，请确保服务器正在运行');
+        };
+
+        this.ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            this.handleServerMessage(data);
         };
     }
 
@@ -268,16 +269,32 @@ class BattleMode {
     }
 
     createRoom() {
-        this.ws.send(JSON.stringify({
-            type: 'create_room'
-        }));
+        if (this.ws.readyState === WebSocket.OPEN) {
+            this.ws.send(JSON.stringify({
+                type: 'create_room'
+            }));
+        } else {
+            alert('正在连接服务器，请稍后再试...');
+            // 可选：等待连接建立后自动重试
+            this.ws.onopen = () => {
+                this.createRoom();
+            };
+        }
     }
 
     joinRoom(roomId) {
-        this.ws.send(JSON.stringify({
-            type: 'join_room',
-            roomId: roomId
-        }));
+        if (this.ws.readyState === WebSocket.OPEN) {
+            this.ws.send(JSON.stringify({
+                type: 'join_room',
+                roomId: roomId
+            }));
+        } else {
+            alert('正在连接服务器，请稍后再试...');
+            // 可选：等待连接建立后自动重试
+            this.ws.onopen = () => {
+                this.joinRoom(roomId);
+            };
+        }
     }
 
     startBattleGame() {
@@ -1055,94 +1072,3 @@ class BattleMode {
             const achievementItem = document.createElement('div');
             achievementItem.className = `achievement-item ${achievement.unlocked ? 'unlocked' : 'locked'}`;
             achievementItem.innerHTML = `
-                <div class="achievement-icon">${achievement.icon}</div>
-                <div class="achievement-info">
-                    <div class="achievement-name">${achievement.name}</div>
-                    <div class="achievement-desc">${achievement.description}</div>
-                </div>
-                ${achievement.unlocked ? '<div class="achievement-unlocked">✓</div>' : ''}
-            `;
-            achievementsList.appendChild(achievementItem);
-        });
-    }
-
-    loadAchievements() {
-        const savedAchievements = localStorage.getItem('battleAchievements');
-        const savedStats = localStorage.getItem('battleStats');
-        
-        if (savedAchievements) {
-            const unlockedAchievements = JSON.parse(savedAchievements);
-            Object.keys(unlockedAchievements).forEach(id => {
-                if (this.achievements[id]) {
-                    this.achievements[id].unlocked = unlockedAchievements[id];
-                }
-            });
-        }
-        
-        if (savedStats) {
-            this.stats = JSON.parse(savedStats);
-        }
-    }
-
-    saveAchievements() {
-        const unlockedAchievements = {};
-        Object.entries(this.achievements).forEach(([id, achievement]) => {
-            unlockedAchievements[id] = achievement.unlocked;
-        });
-        
-        localStorage.setItem('battleAchievements', JSON.stringify(unlockedAchievements));
-        localStorage.setItem('battleStats', JSON.stringify(this.stats));
-    }
-
-    unlockAchievement(id) {
-        if (this.achievements[id] && !this.achievements[id].unlocked) {
-            this.achievements[id].unlocked = true;
-            this.showAchievementNotification(this.achievements[id]);
-            this.saveAchievements();
-        }
-    }
-
-    showAchievementNotification(achievement) {
-        const notification = document.createElement('div');
-        notification.className = 'achievement-notification';
-        notification.innerHTML = `
-            <div class="achievement-icon">${achievement.icon}</div>
-            <div class="achievement-content">
-                <div class="achievement-title">解锁成就</div>
-                <div class="achievement-name">${achievement.name}</div>
-                <div class="achievement-description">${achievement.description}</div>
-            </div>
-        `;
-        
-        document.body.appendChild(notification);
-        
-        setTimeout(() => {
-            notification.classList.add('fade-out');
-            setTimeout(() => notification.remove(), 500);
-        }, 3000);
-    }
-
-    checkAchievements() {
-        // 检查连击相关成就
-        if (this.combo >= 5) this.unlockAchievement('combo5');
-        if (this.combo >= 8) this.unlockAchievement('combo8');
-        if (this.combo >= 10) this.unlockAchievement('combo10');
-        
-        // 检查分数相关成就
-        if (this.score >= 300) this.unlockAchievement('score300');
-        if (this.score >= 500) this.unlockAchievement('score500');
-        if (this.score >= 1000) this.unlockAchievement('score1000');
-        
-        // 检查特殊方块相关成就
-        if (this.stats.specialBlocksUsed >= 5) this.unlockAchievement('specialMaster');
-        if (this.stats.rainbowBlocksUsed >= 3) this.unlockAchievement('rainbowKing');
-        if (this.stats.bombBlocksUsed >= 3) this.unlockAchievement('bombExpert');
-        
-        // 检查道具相关成就
-        if (this.stats.itemsUsed.size >= 4) this.unlockAchievement('itemMaster');
-        if (this.stats.maxColorBombEliminated >= 15) this.unlockAchievement('colorBombPro');
-    }
-}
-
-// 初始化对战模式
-const battleMode = new BattleMode();
