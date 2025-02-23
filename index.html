@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Colorful Sloaner Battle</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="game">
+        <div id="start-screen" class="screen">
+            <div class="start-content">
+                <h1 class="game-title">Colorful Sloaner Battle</h1>
+                <div class="game-description">
+                    <p>连接三个相同颜色的方块来消除它们</p>
+                    <p>在60秒内获得更高的分数来击败对手</p>
+                </div>
+                <div class="menu-buttons">
+                    <button id="battle-btn" class="menu-button">开始对战</button>
+                    <div class="sub-buttons">
+                        <button class="achievements-btn menu-button">成就</button>
+                        <button class="rules-btn menu-button">游戏规则</button>
+                    </div>
+                </div>
+            </div>
+            <div class="floating-blocks">
+                <div class="float-block" style="--delay: 0s; --color: var(--color-1);"></div>
+                <div class="float-block" style="--delay: 1s; --color: var(--color-2);"></div>
+                <div class="float-block" style="--delay: 2s; --color: var(--color-3);"></div>
+                <div class="float-block" style="--delay: 3s; --color: var(--color-4);"></div>
+            </div>
+        </div>
+
+        <!-- 成就面板 -->
+        <div class="achievements-panel" style="display: none;">
+            <div class="achievements-header">
+                <h2>成就系统</h2>
+                <button class="close-btn">&times;</button>
+            </div>
+            <div class="achievements-list">
+                <!-- 成就列表将由JavaScript动态生成 -->
+            </div>
+        </div>
+
+        <!-- 游戏规则面板 -->
+        <div class="rules-panel" style="display: none;">
+            <div class="rules-header">
+                <h2>游戏规则</h2>
+                <button class="close-btn">&times;</button>
+            </div>
+            <div class="rules-content">
+                <h3>基本规则</h3>
+                <ul>
+                    <li>游戏时长为60秒</li>
+                    <li>连接三个或以上相同颜色的方块可以消除</li>
+                    <li>消除方块可以获得分数</li>
+                    <li>时间结束时分数高的玩家获胜</li>
+                </ul>
+                
+                <h3>特殊方块</h3>
+                <ul>
+                    <li>🌈 彩虹方块：消除所有方块</li>
+                    <li>💣 炸弹方块：消除3x3范围内的方块</li>
+                    <li>⚡ 闪电方块：消除同行和同列的方块</li>
+                    <li>⭐ 星星方块：消除所有相同颜色的方块</li>
+                </ul>
+                
+                <h3>道具系统</h3>
+                <ul>
+                    <li>🔨 锤子：消除任意一个方块</li>
+                    <li>💣 炸弹：消除3x3范围内的方块</li>
+                    <li>🔄 刷新：重新排列所有方块</li>
+                    <li>🎨 同色炸弹：消除所有相同颜色的方块</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- 对战模式界面 -->
+        <div id="battle-screen" class="screen" style="display: none;">
+            <h1>对战模式</h1>
+            <div class="battle-menu">
+                <button id="create-room-btn" class="battle-button">创建房间</button>
+                <div class="join-room-container">
+                    <input type="text" id="room-number-input" placeholder="输入6位房间号" maxlength="6">
+                    <button id="join-room-btn" class="battle-button">加入房间</button>
+                </div>
+                <button id="back-to-main-btn" class="battle-button">返回主菜单</button>
+            </div>
+            <!-- 等待界面 -->
+            <div id="waiting-screen" style="display: none;">
+                <h2>等待对手加入...</h2>
+                <div class="room-number">房间号: <span id="current-room-number"></span></div>
+                <div class="loading-animation">
+                    <div class="loading-dot"></div>
+                    <div class="loading-dot"></div>
+                    <div class="loading-dot"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 对战游戏界面 -->
+        <div id="battle-game-screen" class="screen" style="display: none;">
+            <div class="battle-container">
+                <div class="player-board">
+                    <div class="player-info">
+                        <div class="player-name">玩家1</div>
+                        <div class="player-score">得分: 0</div>
+                        <div class="time-left">剩余时间: 60</div>
+                    </div>
+                    <div id="player-board" class="game-board"></div>
+                </div>
+                <div class="opponent-board">
+                    <div class="player-info">
+                        <div class="opponent-name">玩家2</div>
+                        <div class="opponent-score">得分: 0</div>
+                    </div>
+                    <div class="opponent-status">对手正在游戏中...</div>
+                </div>
+            </div>
+            <div class="battle-controls">
+                <button id="battle-quit-btn">退出对战</button>
+            </div>
+        </div>
+    </div>
+    <script src="battle.js"></script>
+</body>
+</html>
