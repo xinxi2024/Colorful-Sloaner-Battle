@@ -30,50 +30,47 @@ const app = express();
 const port = process.env.PORT || 10000;
 
 // 创建HTTP服务器
-const server = app.listen(port, '0.0.0.0', () => {
-    console.log(`服务器已启动:`);
+const server = app.listen(port, () => {
+    const localIP = getLocalIP();
+    console.log('服务器已启动:');
     console.log(`- 本地访问: http://localhost:${port}`);
-    if (process.env.RENDER) {
-        console.log('- Render部署模式');
-    } else {
-        const localIP = getLocalIP();
-        console.log(`- 局域网访问: http://${localIP}:${port}`);
-    }
+    console.log(`- 局域网访问: http://${localIP}:${port}`);
+    console.log('WebSocket服务已启动:');
+    console.log(`- 本地WebSocket: ws://localhost:${port}/ws`);
+    console.log(`- 局域网WebSocket: ws://${localIP}:${port}/ws`);
 });
 
 // 创建WebSocket服务器
 const wss = new WebSocket.Server({ 
-    server,  // 直接使用HTTP服务器
-    clientTracking: true,
-    perMessageDeflate: {
-        zlibDeflateOptions: {
-            chunkSize: 1024,
-            memLevel: 7,
-            level: 3
-        },
-        zlibInflateOptions: {
-            chunkSize: 10 * 1024
-        },
-        clientNoContextTakeover: true,
-        serverNoContextTakeover: true,
-        serverMaxWindowBits: 10,
-        concurrencyLimit: 10,
-        threshold: 1024
-    }
+    server,
+    path: '/ws',
+    clientTracking: true
 });
 
 // 添加CORS支持
 app.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*');
+    const origin = req.headers.origin;
+    res.header('Access-Control-Allow-Origin', origin || '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
-    next();
+    res.header('Access-Control-Allow-Credentials', 'true');
+    
+    if (req.method === 'OPTIONS') {
+        res.sendStatus(200);
+    } else {
+        next();
+    }
 });
 
 // 忽略favicon请求
 app.get('/favicon.ico', (req, res) => res.status(204));
 
 // 提供静态文件服务
-app.use(express.static(path.join(__dirname, '..')));
+app.use(express.static(path.join(__dirname, '..'), {
+    setHeaders: (res, path, stat) => {
+        res.set('Access-Control-Allow-Origin', '*');
+    }
+}));
 
 // 设置根路由
 app.get('/', (req, res) => {
@@ -95,16 +92,18 @@ function generateRoomNumber() {
 }
 
 // WebSocket连接处理
-wss.on('connection', (ws) => {
-    console.log('New client connected');
+wss.on('connection', (ws, request) => {
+    const clientIp = request.socket.remoteAddress;
+    console.log(`新客户端连接 - IP: ${clientIp}`);
+    
     const clientId = uuidv4();
     clients.set(ws, { id: clientId });
 
     // 处理消息
     ws.on('message', (message) => {
         try {
-            const data = JSON.parse(message);
-            console.log('Received:', data);
+            const data = JSON.parse(message.toString());
+            console.log(`收到消息 [${clientId}]:`, data);
             
             switch (data.type) {
                 case 'create_room':
@@ -121,7 +120,7 @@ wss.on('connection', (ws) => {
                     break;
             }
         } catch (error) {
-            console.error('Error handling message:', error);
+            console.error('处理消息时出错:', error);
             ws.send(JSON.stringify({
                 type: 'error',
                 message: '服务器错误，请重试'
@@ -131,15 +130,21 @@ wss.on('connection', (ws) => {
 
     // 处理断开连接
     ws.on('close', () => {
-        console.log('Client disconnected');
+        console.log(`客户端断开连接 [${clientId}]`);
         handleLeaveRoom(ws);
         clients.delete(ws);
     });
 
     // 处理错误
     ws.on('error', (error) => {
-        console.error('WebSocket error:', error);
+        console.error(`WebSocket错误 [${clientId}]:`, error);
     });
+
+    // 发送欢迎消息
+    ws.send(JSON.stringify({
+        type: 'welcome',
+        message: '已连接到服务器'
+    }));
 });
 
 // 创建房间
@@ -252,30 +257,60 @@ function handleLeaveRoom(ws) {
 
 // 处理WebSocket升级
 server.on('upgrade', (request, socket, head) => {
+    // 验证WebSocket连接路径
+    const pathname = new URL(request.url, `http://${request.headers.host}`).pathname;
+    
+    if (pathname !== '/ws') {
+        socket.destroy();
+        return;
+    }
+
     // 添加错误处理
     socket.on('error', (err) => {
         console.error('Socket error:', err);
+        socket.destroy();
     });
 
-    wss.handleUpgrade(request, socket, head, (ws) => {
-        // 添加心跳检测
-        ws.isAlive = true;
-        ws.on('pong', () => {
+    try {
+        wss.handleUpgrade(request, socket, head, (ws) => {
+            // 添加心跳检测
             ws.isAlive = true;
+            ws.on('pong', () => {
+                ws.isAlive = true;
+            });
+            
+            // 设置较大的缓冲区大小
+            ws.on('message', (data) => {
+                try {
+                    const message = JSON.parse(data);
+                    console.log('Received message:', message);
+                    // 处理消息...
+                } catch (error) {
+                    console.error('Error parsing message:', error);
+                }
+            });
+            
+            wss.emit('connection', ws, request);
         });
-        
-        wss.emit('connection', ws, request);
-    });
+    } catch (err) {
+        console.error('WebSocket upgrade error:', err);
+        socket.destroy();
+    }
 });
 
 // 添加WebSocket服务器心跳检测
 const interval = setInterval(() => {
     wss.clients.forEach((ws) => {
         if (ws.isAlive === false) {
-            clients.delete(ws);
+            console.log('Client timeout, terminating connection');
             return ws.terminate();
         }
         ws.isAlive = false;
         ws.ping(() => {});
     });
 }, 30000);
+
+// 清理定时器
+wss.on('close', () => {
+    clearInterval(interval);
+});
